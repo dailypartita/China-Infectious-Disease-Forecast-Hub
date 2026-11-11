@@ -352,16 +352,24 @@ def make_dengue_model_task() -> dict[str, object]:
 def merge_dates(task_ids: dict[str, object], dates: list[str]) -> bool:
     changed = False
     for key in ("reference_date", "target_end_date"):
-        current = task_ids[key]["optional"]
-        merged = sorted(set(current) | set(dates))
-        if merged != current:
-            task_ids[key]["optional"] = merged
+        if merge_optional_dates(task_ids, key, dates):
             changed = True
     return changed
 
 
+def merge_optional_dates(task_ids: dict[str, object], key: str,
+                         dates: list[str]) -> bool:
+    current = task_ids[key]["optional"]
+    merged = sorted(set(current) | set(dates))
+    if merged != current:
+        task_ids[key]["optional"] = merged
+        return True
+    return False
+
+
 def update_tasks_json(weekly_dates: list[str],
-                      monthly_dates: list[str]) -> bool:
+                      monthly_dates: list[str],
+                      monthly_target_end_dates: list[str] | None = None) -> bool:
     tasks = json.loads(TASKS_PATH.read_text(encoding="utf-8"))
     rounds = tasks["rounds"]
     changed = False
@@ -396,6 +404,14 @@ def update_tasks_json(weekly_dates: list[str],
         model_tasks.append(dengue_task)
         changed = True
     if merge_dates(dengue_task["task_ids"], monthly_dates):
+        changed = True
+    # hubValidations target_tbl_values requires every observed dengue
+    # target_end_date, including 2004–2023 history, to be listed here.
+    # Those months are not submission rounds: leave reference_date alone
+    # so they are not unioned into the weekly round ids.
+    if monthly_target_end_dates and merge_optional_dates(
+        dengue_task["task_ids"], "target_end_date", monthly_target_end_dates
+    ):
         changed = True
 
     # hubAdmin's validate_round_ids_consistent requires the round_id variable
@@ -485,12 +501,17 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
         {row["target_end_date"] for row in covid_series + flu_series})
     monthly_dates = sorted({row["target_end_date"] for row in dengue_series})
     # Months before the configured dengue submission window are observed
-    # history, not new forecast rounds. Merging them would also union those
-    # month-start dates into the weekly reference_date list.
+    # history, not new forecast rounds. They are valid target_end_dates
+    # (see monthly_target_end_dates) but must not be merged into
+    # reference_date, which is unioned across the weekly task as well.
     task_monthly_dates = [
         date for date in monthly_dates if date >= DENGUE_FIRST_REFERENCE
     ]
-    tasks_changed = update_tasks_json(weekly_dates, task_monthly_dates)
+    tasks_changed = update_tasks_json(
+        weekly_dates,
+        task_monthly_dates,
+        monthly_target_end_dates=monthly_dates,
+    )
 
     def span(series: list[dict[str, str]]) -> str:
         return (f"{series[-1]['target_end_date']} .. "
