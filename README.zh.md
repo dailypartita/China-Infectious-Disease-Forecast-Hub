@@ -6,7 +6,7 @@
 
 </div>
 
-基于 [Hubverse](https://hubverse.io/) 框架构建的协作式预测中心，用于收集、校验和归档全国哨点监测网络中门急诊 ILI 病例 SARS-CoV-2 与流感病毒阳性率的周度概率预测，以及全国法定传染病报告中登革热月度病例数的概率预测。
+基于 [Hubverse](https://hubverse.io/) 框架构建的协作式预测中心，用于收集、校验和归档三类概率预测：中国疾控中心哨点监测中门急诊 ILI 病例的 SARS-CoV-2 阳性率、国家流感中心（CNIC）每周流感监测报告中全国流感监测网络 ILI 标本的实验室阳性率，以及全国法定传染病报告中的登革热月度病例数。
 
 **在线 Dashboard：** [dailypartita.github.io/China-Infectious-Disease-Forecast-Dashboard](https://dailypartita.github.io/China-Infectious-Disease-Forecast-Dashboard/)
 
@@ -20,7 +20,9 @@
 
 **周度呼吸道目标**
 
-- **指标：** `wk inc covid prop ili`、`wk inc flu prop ili` — 门急诊 ILI 病例中 SARS-CoV-2 / 流感病毒周度阳性率
+- **指标：**
+  - `wk inc covid prop ili` — 中国疾控中心《全国急性呼吸道传染病哨点监测情况》中，门急诊 ILI 病例的 SARS-CoV-2 核酸阳性率（周度）
+  - `wk inc flu prop ili` — 国家流感中心（CNIC）每周流感监测报告中，全国流感监测网络 ILI 标本的实验室阳性率（全国序列，周度）。来源：[流感周报](https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/)
 - **地区：** `CN`（全国）
 - **输出：** 23 分位数概率预测（horizon -1 至 6 周，reference_date 为周一；可提交其中任意子集。建议补齐全部 horizon 以便可比，但校验并不要求全部）
 - **单位：** 百分点（如 `13.5` 表示 13.5%），非比例值
@@ -56,12 +58,13 @@
 
 | 环节 | 时间 |
 |------|------|
-| CDC 哨点监测报告发布 | 每周（通常周三） |
+| CDC 哨点监测报告发布（新冠） | 每周（通常周三） |
+| 国家流感中心流感周报 | 每周 |
 | 目标数据同步 | 通过 `target-data/update_from_cncdc.py` 从 [cn_cdc_dashboard](https://github.com/dailypartita/cn_cdc_dashboard) 更新（已自动化：`sync-target-data.yaml`） |
 | 模型预测提交截止 | 每周三 23:59（北京时间） |
 | Dashboard 数据更新 | 每周四 17:33 UTC（自动） |
 
-监测数据来源于中国疾控中心[《全国急性呼吸道传染病哨点监测情况》](https://www.chinacdc.cn/jksj/jksj04_14275/)（周度呼吸道病原体）与[《法定传染病疫情概况》](https://www.chinacdc.cn/jksj/jksj01/)（登革热月报），结构化数据库：[cn_cdc_dashboard](https://github.com/dailypartita/cn_cdc_dashboard)。
+监测数据来源：新冠来自中国疾控中心[《全国急性呼吸道传染病哨点监测情况》](https://www.chinacdc.cn/jksj/jksj04_14275/)（门急诊 ILI 核酸阳性率），流感来自[国家流感中心每周流感监测报告](https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/)（全国流感监测网络 ILI 标本实验室阳性率），登革热来自中国疾控中心[《法定传染病疫情概况》](https://www.chinacdc.cn/jksj/jksj01/)。结构化数据库：[cn_cdc_dashboard](https://github.com/dailypartita/cn_cdc_dashboard)。
 
 ## 仓库结构
 

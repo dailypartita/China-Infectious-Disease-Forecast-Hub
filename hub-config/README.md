@@ -31,7 +31,7 @@ Defines the modeling tasks, including:
   - `quantile` — 23 required quantile levels from 0.01 to 0.99
   - `sample` — 200 samples per task (optional)
 - **Modeling tasks**: two task blocks within the shared round —
-  - weekly — `wk inc covid prop ili`, `wk inc flu prop ili` (SARS-CoV-2 / influenza positivity rates among ILI cases), horizons -1 to 6 weeks, reference dates on Mondays
+  - weekly — `wk inc covid prop ili` (SARS-CoV-2 positivity among outpatient ILI cases, China CDC sentinel surveillance) and `wk inc flu prop ili` (CNIC national laboratory positivity of ILI specimens; [weekly influenza surveillance report](https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/)), horizons -1 to 6 weeks, reference dates on Mondays
   - monthly — `mo inc dengue cases` (reported dengue cases), horizons -1 to 3 months, reference dates on the 1st of each month
 - **Submission window**: Broad window (±360 days relative to reference date)
 

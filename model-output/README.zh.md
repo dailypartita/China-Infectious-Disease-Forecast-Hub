@@ -48,7 +48,7 @@ CSV，编码为 **UTF-8 无 BOM**，且**恰好 8 列**（顺序不限），不�
 | 取值 | 频率 | 说明 |
 |------|------|------|
 | `wk inc covid prop ili` | 周度 | 门急诊 ILI 病例中 SARS-CoV-2 阳性率（百分点） |
-| `wk inc flu prop ili` | 周度 | 门急诊 ILI 病例中流感病毒阳性率（百分点） |
+| `wk inc flu prop ili` | 周度 | 国家流感中心（CNIC）每周流感监测报告中，全国流感监测网络 ILI 标本的实验室阳性率（全国序列，百分点）。来源：[流感周报](https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/) |
 | `mo inc dengue cases` | 月度 | 法定传染病报告的登革热病例数（整数） |
 
 `target_end_date` 必须满足：周度目标为 `reference_date + horizon × 7 天`；登革热为 `reference_date + horizon 个月`（仍为某月 1 日）。

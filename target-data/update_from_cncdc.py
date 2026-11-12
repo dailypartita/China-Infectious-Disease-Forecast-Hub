@@ -3,8 +3,19 @@
 
 Targets:
 - wk inc covid prop ili  (weekly, from cncdc_surveillance_covid19.csv)
-- wk inc flu prop ili    (weekly, from cncdc_surveillance_all.csv)
+- wk inc flu prop ili    (weekly, from cnic_influenza_weekly.csv)
 - mo inc dengue cases    (monthly, from notifiable_all.csv)
+
+Influenza observations are the China National Influenza Center (CNIC)
+weekly report's national laboratory positivity of ILI specimens
+(column ``positivity_national``), not ILI% and not the China CDC
+multi-pathogen sentinel bulletin's 「流感病毒」 nucleic-acid positivity.
+Official reports: https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/
+
+The CNIC file keys each ISO week by Monday ``reference_date`` and Sunday
+``target_end_date``. This hub keeps the Monday (``reference_date``) as
+``target_end_date`` so already submitted forecasts stay aligned. Weeks
+with no national positivity value are omitted; they are not interpolated.
 
 Dengue history before the official China CDC crawl (2004-01 through the
 month before official coverage) is kept by merging
@@ -12,8 +23,8 @@ data/backfill/notifiable-flu-dengue.csv the same way
 cn_cdc_dashboard scripts/sync-notifiable.mjs does: an existing
 (month, disease) row wins, and the backfill only fills gaps. That
 extract also contains monthly notifiable influenza case counts. Those
-are not `wk inc flu prop ili` (weekly sentinel ILI positivity) and are
-not imported, and this hub has no monthly flu target.
+are not `wk inc flu prop ili` (CNIC national ILI-specimen positivity)
+and are not imported, and this hub has no monthly flu target.
 """
 
 from __future__ import annotations
@@ -23,14 +34,14 @@ import csv
 import json
 import sys
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 CNCDC_BASE = (
     "https://raw.githubusercontent.com/dailypartita/cn_cdc_dashboard/main/data/"
 )
 COVID_URL = CNCDC_BASE + "cncdc_surveillance_covid19.csv"
-SURV_ALL_URL = CNCDC_BASE + "cncdc_surveillance_all.csv"
+CNIC_URL = CNCDC_BASE + "cnic_influenza_weekly.csv"
 NOTIFIABLE_URL = CNCDC_BASE + "notifiable_all.csv"
 # Compiled national monthly history. Official syncs merge this file in
 # writeOutputs and never overwrite a (month, disease) the crawl returned.
@@ -38,7 +49,8 @@ BACKFILL_URL = CNCDC_BASE + "backfill/notifiable-flu-dengue.csv"
 LOCAL_DATA_DIR = Path("/data/ykx/hubverse_proj/00-cn_cdc_dashboard/data")
 DENGUE_DISEASE = "登革热"
 # Monthly notifiable influenza counts in the backfill extract. This hub's
-# flu target is weekly sentinel positivity, so those rows are ignored.
+# flu target is the CNIC weekly national laboratory positivity series, so
+# those rows are ignored.
 MONTHLY_FLU_DISEASE = "流行性感冒"
 
 TARGET_COVID = "wk inc covid prop ili"
@@ -108,6 +120,73 @@ def build_weekly_series(rows: list[dict[str, str]], pathogen: str,
         }
         for date in sorted(series.keys(), reverse=True)
     ]
+
+
+def observation_text(value: str) -> str:
+    """Keep the published numeric text, rejecting blank or non-finite values."""
+    text = value.strip()
+    number = float(text)
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ValueError(f"non-finite positivity value: {value!r}")
+    if number < 0 or number > 100:
+        raise ValueError(f"positivity outside 0–100: {value!r}")
+    return text
+
+
+def build_cnic_flu_series(rows: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
+    """National CNIC ILI-specimen positivity, keyed by the week-start Monday.
+
+    ``positivity_national`` is percentage points. ILI% columns are ignored.
+    A blank national value is a missing week and is not filled in. The Hub
+    ``target_end_date`` is CNIC ``reference_date`` (Monday). CNIC's own
+    ``target_end_date`` is the Sunday of that same ISO week.
+    """
+    if rows and "positivity_national" not in rows[0]:
+        raise RuntimeError(
+            "CNIC weekly file has no positivity_national column; "
+            "refusing to fall back to ILI% or another series"
+        )
+
+    series: dict[str, str] = {}
+    skipped = 0
+    for row in rows:
+        value = (row.get("positivity_national") or "").strip()
+        if not value:
+            skipped += 1
+            continue
+        monday = (row.get("reference_date") or "").strip()
+        sunday = (row.get("target_end_date") or "").strip()
+        if not monday or not sunday:
+            raise RuntimeError(
+                "CNIC row with national positivity is missing reference_date "
+                f"or target_end_date: {row!r}"
+            )
+        monday_dt = datetime.strptime(monday, "%Y-%m-%d")
+        sunday_dt = datetime.strptime(sunday, "%Y-%m-%d")
+        if monday_dt.weekday() != 0 or sunday_dt != monday_dt + timedelta(days=6):
+            raise RuntimeError(
+                "CNIC week is not Monday–Sunday "
+                f"({monday} .. {sunday}); refusing to remap the Hub date"
+            )
+        text = observation_text(value)
+        previous = series.get(monday)
+        if previous is not None and previous != text:
+            raise RuntimeError(
+                f"conflicting CNIC national positivity for {monday}: "
+                f"{previous} vs {text}"
+            )
+        series[monday] = text
+
+    flu_rows = [
+        {
+            "target_end_date": date,
+            "target": TARGET_FLU,
+            "location": LOCATION,
+            "observation": series[date],
+        }
+        for date in sorted(series.keys(), reverse=True)
+    ]
+    return flu_rows, skipped
 
 
 def is_dengue_row(row: dict[str, str]) -> bool:
@@ -274,16 +353,19 @@ def build_oracle(time_series: list[dict[str, str]], target: str,
 def flu_target_metadata() -> dict[str, object]:
     return {
         "target_id": TARGET_FLU,
-        "target_name": "Influenza virus positivity rate among department "
-                       "influenza-like illness (ILI) cases",
+        "target_name": "CNIC national laboratory positivity rate of ILI specimens",
         "target_units": "proportion",
         "target_keys": {"target": TARGET_FLU},
-        "description": "This target represents the influenza virus positivity "
-                       "rate among department influenza-like illness (ILI) "
-                       "cases, as reported in China CDCs weekly National "
-                       "Sentinel Surveillance of Acute Respiratory Infectious "
-                       "Diseases, in the week ending on the target_end_date "
-                       "(i.e., [horizon] weeks after the reference_date).",
+        "description": "This target represents the national laboratory "
+                       "positivity rate of influenza-like illness (ILI) "
+                       "specimens tested in the national influenza "
+                       "surveillance network, as published in the China "
+                       "National Influenza Center (CNIC) weekly influenza "
+                       "surveillance report "
+                       "(https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/), for the "
+                       "ISO week starting on the target_end_date (Monday; "
+                       "[horizon] weeks after the reference_date). Values "
+                       "are percentage points for the national series.",
         "target_type": "continuous",
         "is_step_ahead": True,
         "time_unit": "week",
@@ -369,7 +451,8 @@ def merge_optional_dates(task_ids: dict[str, object], key: str,
 
 def update_tasks_json(weekly_dates: list[str],
                       monthly_dates: list[str],
-                      monthly_target_end_dates: list[str] | None = None) -> bool:
+                      monthly_target_end_dates: list[str] | None = None,
+                      flu_target_end_dates: list[str] | None = None) -> bool:
     tasks = json.loads(TASKS_PATH.read_text(encoding="utf-8"))
     rounds = tasks["rounds"]
     changed = False
@@ -382,9 +465,17 @@ def update_tasks_json(weekly_dates: list[str],
     if TARGET_FLU not in targets:
         targets.append(TARGET_FLU)
         changed = True
-    metadata_ids = {m["target_id"] for m in weekly_task["target_metadata"]}
-    if TARGET_FLU not in metadata_ids:
-        weekly_task["target_metadata"].append(flu_target_metadata())
+    desired_flu = flu_target_metadata()
+    metadata = weekly_task["target_metadata"]
+    flu_index = next(
+        (i for i, meta in enumerate(metadata) if meta.get("target_id") == TARGET_FLU),
+        None,
+    )
+    if flu_index is None:
+        metadata.append(desired_flu)
+        changed = True
+    elif metadata[flu_index] != desired_flu:
+        metadata[flu_index] = desired_flu
         changed = True
 
     # Single round holds all targets: dengue (monthly) is a separate
@@ -411,6 +502,14 @@ def update_tasks_json(weekly_dates: list[str],
     # so they are not unioned into the weekly round ids.
     if monthly_target_end_dates and merge_optional_dates(
         dengue_task["task_ids"], "target_end_date", monthly_target_end_dates
+    ):
+        changed = True
+    # Same pattern for flu: every observed CNIC Monday must be a valid
+    # target_end_date, including weeks before the submission window.
+    # Do not merge those Mondays into reference_date. That list is the
+    # submission-round id and is unioned onto the dengue task below.
+    if flu_target_end_dates and merge_optional_dates(
+        weekly_task["task_ids"], "target_end_date", flu_target_end_dates
     ):
         changed = True
 
@@ -445,8 +544,8 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
     """Regenerate Hub target-data (+ tasks.json dates) from cncdc CSVs."""
     covid_rows, covid_src = local_or_github(
         "cncdc_surveillance_covid19.csv", COVID_URL, args.csv, args.from_github)
-    surv_rows, surv_src = local_or_github(
-        "cncdc_surveillance_all.csv", SURV_ALL_URL, args.surv_csv, args.from_github)
+    cnic_rows, cnic_src = local_or_github(
+        "cnic_influenza_weekly.csv", CNIC_URL, args.cnic_csv, args.from_github)
     notifiable_rows, notifiable_src = local_or_github(
         "notifiable_all.csv", NOTIFIABLE_URL, args.notifiable_csv, args.from_github)
     backfill_rows, backfill_src = local_or_github(
@@ -455,8 +554,7 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
 
     covid_series = build_weekly_series(
         covid_rows, "新型冠状病毒", TARGET_COVID, MIN_DATE_COVID)
-    flu_series = build_weekly_series(
-        surv_rows, "流感病毒", TARGET_FLU, None)
+    flu_series, flu_skipped = build_cnic_flu_series(cnic_rows)
     notifiable_rows, dengue_backfill_added = merge_dengue_backfill(
         notifiable_rows, backfill_rows)
     dengue_series = build_dengue_series(notifiable_rows)
@@ -497,8 +595,10 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
             "oracle_value",
         ],
     )
-    weekly_dates = sorted(
-        {row["target_end_date"] for row in covid_series + flu_series})
+    # COVID weeks still extend the shared submission rounds. Flu history
+    # is older than those rounds; only its target_end_date set grows.
+    weekly_dates = sorted({row["target_end_date"] for row in covid_series})
+    flu_dates = sorted({row["target_end_date"] for row in flu_series})
     monthly_dates = sorted({row["target_end_date"] for row in dengue_series})
     # Months before the configured dengue submission window are observed
     # history, not new forecast rounds. They are valid target_end_dates
@@ -511,6 +611,7 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
         weekly_dates,
         task_monthly_dates,
         monthly_target_end_dates=monthly_dates,
+        flu_target_end_dates=flu_dates,
     )
 
     def span(series: list[dict[str, str]]) -> str:
@@ -523,9 +624,10 @@ def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
         "dengue": span(dengue_series),
         "dengue_backfill_added": dengue_backfill_added,
         "ignored_monthly_flu": ignored_monthly_flu,
+        "flu_skipped_missing_national": flu_skipped,
         "oracle_rows": len(oracle),
         "tasks_changed": tasks_changed,
-        "sources": [covid_src, surv_src, notifiable_src, backfill_src],
+        "sources": [covid_src, cnic_src, notifiable_src, backfill_src],
     }
 
 
@@ -538,10 +640,10 @@ def main() -> int:
         help="Local cncdc_surveillance_covid19.csv (default: local path if present, else GitHub)",
     )
     parser.add_argument(
-        "--surv-csv",
+        "--cnic-csv",
         type=Path,
         default=None,
-        help="Local cncdc_surveillance_all.csv (default: local path if present, else GitHub)",
+        help="Local cnic_influenza_weekly.csv (default: local path if present, else GitHub)",
     )
     parser.add_argument(
         "--notifiable-csv",
@@ -570,6 +672,8 @@ def main() -> int:
     print(f"  dengue: {stats['dengue']}")
     print(f"  dengue backfill months added: {stats['dengue_backfill_added']}")
     print(f"  monthly flu backfill rows ignored: {stats['ignored_monthly_flu']}")
+    print("  CNIC weeks skipped (no national positivity): "
+          f"{stats['flu_skipped_missing_national']}")
     print(f"Updated {ORACLE_PATH.name}: {stats['oracle_rows']} rows")
     print(f"Updated tasks.json: {'yes' if stats['tasks_changed'] else 'no'}")
     for src in stats["sources"]:
