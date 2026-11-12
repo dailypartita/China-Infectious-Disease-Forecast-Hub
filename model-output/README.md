@@ -109,7 +109,7 @@ The forecast target. Accepted values:
 
 The offset between the `reference_date` and the `target_end_date`, in the target's own time unit.
 
-**Weekly targets** — the number of **weeks**, integers from **-1 to 6**:
+**Weekly targets** — the number of **weeks**, integers from **-5 to 6**. Horizons **-1 to 6** are the forecast range. Horizons **-5 to -2** match the oracle lookback and may be submitted, but they are not required.
 
 | Horizon | Meaning |
 |---------|---------|
@@ -120,7 +120,7 @@ The offset between the `reference_date` and the `target_end_date`, in the target
 | ... | ... |
 | 6 | 6-week-ahead forecast |
 
-**Monthly target** (`mo inc dengue cases`) — the number of **months**, integers from **-1 to 3**:
+**Monthly target** (`mo inc dengue cases`) — the number of **months**, integers from **-5 to 3**. Horizons **-1 to 3** are the forecast range. Horizons **-5 to -2** match the oracle lookback.
 
 | Horizon | Meaning |
 |---------|---------|

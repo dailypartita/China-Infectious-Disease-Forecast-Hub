@@ -10,7 +10,7 @@ Collaborative forecasting hub built on the [Hubverse](https://hubverse.io/) fram
 
 **Dashboard:** [dailypartita.github.io/China-Infectious-Disease-Forecast-Dashboard](https://dailypartita.github.io/China-Infectious-Disease-Forecast-Dashboard/)
 
-**Target data:** [cn_cdc_dashboard](https://github.com/dailypartita/cn_cdc_dashboard) · **Observed coverage:** see `target-data/time-series.csv` (updated weekly by automated sync) · **Configured submission rounds:** weekly (Mondays) through 2027-10-25; monthly dengue through 2027-10-01
+**Target data:** [cn_cdc_dashboard](https://github.com/dailypartita/cn_cdc_dashboard) · **Observed coverage:** see `target-data/time-series.csv` (updated weekly by automated sync) · **Configured submission rounds:** weekly Mondays from 2009-09-07 through 2027-10-25; monthly dengue from 2024-01-01 through 2027-10-01
 
 ## Features
 
@@ -24,14 +24,14 @@ All targets share a single dynamic round (round ID = `reference_date`) and are d
   - `wk inc covid prop ili` — weekly SARS-CoV-2 nucleic-acid positivity rate among outpatient ILI cases, from China CDC's National Sentinel Surveillance of Acute Respiratory Infectious Diseases
   - `wk inc flu prop ili` — weekly national laboratory positivity rate of ILI specimens in the national influenza surveillance network, from the China National Influenza Center (CNIC) weekly influenza surveillance report ([source](https://ivdc.chinacdc.cn/cnic/zyzx/lgzb/))
 - **Location:** `CN` (national)
-- **Output:** 23-quantile probabilistic forecasts (horizons -1 to 6 weeks, reference dates on Mondays; teams may submit any subset — the full range is recommended for comparability, but not all horizons are required for validation)
+- **Output:** 23-quantile probabilistic forecasts (horizons -5 to 6 weeks; -1 to 6 is the forecast range, and reference dates are Mondays from 2009-09-07; teams may submit any subset — the forecast range is recommended for comparability, but not all horizons are required for validation)
 - **Units:** Percentage points (e.g., `13.5` = 13.5%), not proportions
 
 **Monthly dengue target**
 
 - **Target:** `mo inc dengue cases` — monthly reported dengue cases from notifiable disease surveillance
 - **Location:** `CN` (national)
-- **Output:** 23-quantile probabilistic forecasts (horizons -1 to 3 months; reference dates are the 1st of each month)
+- **Output:** 23-quantile probabilistic forecasts (horizons -5 to 3 months; -1 to 3 is the forecast range; reference dates are the 1st of each month from 2024-01-01)
 - **Units:** Case counts (integers)
 
 ### Submission
