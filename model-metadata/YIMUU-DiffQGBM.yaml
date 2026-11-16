@@ -1,0 +1,15 @@
+team_name: "Yimuu"
+team_abbr: "YIMUU"
+model_name: "Diff-QGBM: Difference-Target Quantile Gradient Boosting"
+model_abbr: "DiffQGBM"
+model_contributors:
+  - name: "Yimuu"
+    affiliation: "Independent"
+    email: "yimoo12138@gmail.com"
+license: "CC-BY-4.0"
+designated_model: false
+data_inputs: "中国疾控中心每周发布的《全国急性呼吸道传染病哨点监测情况》中的全国门急诊流感样病例新冠病毒阳性率序列（本 Hub 的 target-data/time-series.csv），不使用任何外部数据"
+methods: "差分目标的分位梯度提升：按 horizon 和分位独立训练浅层 LightGBM，直接多步输出 23 个分位数"
+methods_long: "将周度阳性率做 logit 变换，用滞后 1/2/3/4/6/8/12 周、4/8 周滚动均值、一阶差分和年内周序谐波作为特征；对 horizon -1 到 6 的每一步、以及 23 个分位水平各训练一个浅层 LightGBM 分位回归器，直接输出目标周的分位数，不做递归外推。目标变量使用相邻水平的差分 z(t+h)-z(t)，预测后加回最后一次观测值，以消除非平稳水平漂移。5 个随机种子平均以降低子采样方差，输出前对分位做保序处理并截断到 0-100。均值平移与按趋势状态分层的分位校准都在 54 个滚动起点的回测上使 WIS 变差，因此未启用。滚动回测（2025-09 至 2026-09，54 个周起点）的 WIS 为 1.18，MAE 为 1.73。"
+ensemble_of_models: false
+ensemble_of_hub_models: false
