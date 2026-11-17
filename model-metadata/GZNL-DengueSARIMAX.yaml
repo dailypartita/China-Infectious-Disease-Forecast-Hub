@@ -1,0 +1,16 @@
+team_name: "GZNL Group"
+team_abbr: "GZNL"
+model_name: "Dengue SARIMAX with Climate Covariates"
+model_abbr: "DengueSARIMAX"
+model_contributors:
+  - name: "Yang Kaixin"
+    affiliation: "Guangzhou National Laboratory"
+    email: "yang_kaixin@gzlab.ac.cn"
+license: "CC-BY-4.0"
+designated_model: false
+data_inputs: "Hub monthly national dengue cases (mo inc dengue cases, CN) from China CDC notifiable reports via cn_cdc_dashboard (last observation 2026-10-01); Mosqlimate-style climate covariates — Guangzhou ERA5 temp/precip/humidity (Open-Meteo), NOAA CPC ONI (ENSO), NOAA PSL IOD/DMI."
+methods: "Seasonal SARIMAX on log1p dengue counts with lagged ERA5/ONI/IOD exogenous covariates; Gaussian log-scale predictive quantiles."
+methods_long: "GZNL-DengueSARIMAX is a seasonal ARIMAX (order (1,0,1) x (0,1,1,12)) fitted each round on log1p national monthly dengue counts. Exogenous features follow the Mosqlimate/IMDC climate philosophy adapted to China: Guangzhou ERA5 minimum/mean temperature, precipitation and humidity with 1–3 month lags, ONI and IOD indices, plus month-of-year Fourier terms. Climate covariates are z-scored on the fitting window and forward-filled when ERA5 lags case reporting; future exog rows persist the latest climate state and only refresh calendar terms. Forecast uncertainty uses the SARIMAX predictive mean and SE on the log scale, sampled to the 23 hub quantiles, then expm1-mapped, clipped at 0, monotonised and rounded to integer case counts. Hub horizons -1..3 map to model leads from the last published month (lead 0 pins the already-observed month to the published count). On a 2023-09..2026-04 rolling-origin backtest this specification achieved lower overall WIS than the previous LightGBM+CQR submission."
+ensemble_of_models: false
+ensemble_of_hub_models: false
+repo_url: "https://github.com/dailypartita/China-Infectious-Disease-Forecast-Hub"
