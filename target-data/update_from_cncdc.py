@@ -35,20 +35,24 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-CNCDC_BASE = (
-    "https://raw.githubusercontent.com/dailypartita/cn_cdc_dashboard/main/data/"
-)
-COVID_URL = CNCDC_BASE + "cncdc_surveillance_covid19.csv"
-CNIC_URL = CNCDC_BASE + "cnic_influenza_weekly.csv"
-NOTIFIABLE_URL = CNCDC_BASE + "notifiable_all.csv"
-# Compiled national monthly history. Official syncs merge this file in
-# writeOutputs and never overwrite a (month, disease) the crawl returned.
-BACKFILL_URL = CNCDC_BASE + "backfill/notifiable-flu-dengue.csv"
+CNCDC_REPO = "dailypartita/cn_cdc_dashboard"
+
+
+def cncdc_data_url(ref: str, filename: str) -> str:
+    """Raw URL for a cn_cdc_dashboard data file at an exact git ref.
+
+    A commit SHA is immutable, so the raw CDN cannot answer with a stale
+    copy of main the way it can for a few minutes after a new commit.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,80}", ref) or ".." in ref:
+        raise ValueError(f"invalid cn_cdc_dashboard ref: {ref}")
+    return f"https://raw.githubusercontent.com/{CNCDC_REPO}/{ref}/data/{filename}"
 LOCAL_DATA_DIR = Path("/data/ykx/hubverse_proj/00-cn_cdc_dashboard/data")
 DENGUE_DISEASE = "登革热"
 # Monthly notifiable influenza counts in the backfill extract. This hub's
@@ -599,14 +603,24 @@ def write_csv(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> 
 
 def update_hub_target_data(args: argparse.Namespace) -> dict[str, object]:
     """Regenerate Hub target-data (+ tasks.json dates) from cncdc CSVs."""
+    ref = args.cncdc_ref or "main"
+    # Compiled national monthly history. Official syncs merge this file in
+    # writeOutputs and never overwrite a (month, disease) the crawl returned.
     covid_rows, covid_src = local_or_github(
-        "cncdc_surveillance_covid19.csv", COVID_URL, args.csv, args.from_github)
+        "cncdc_surveillance_covid19.csv",
+        cncdc_data_url(ref, "cncdc_surveillance_covid19.csv"),
+        args.csv, args.from_github)
     cnic_rows, cnic_src = local_or_github(
-        "cnic_influenza_weekly.csv", CNIC_URL, args.cnic_csv, args.from_github)
+        "cnic_influenza_weekly.csv",
+        cncdc_data_url(ref, "cnic_influenza_weekly.csv"),
+        args.cnic_csv, args.from_github)
     notifiable_rows, notifiable_src = local_or_github(
-        "notifiable_all.csv", NOTIFIABLE_URL, args.notifiable_csv, args.from_github)
+        "notifiable_all.csv",
+        cncdc_data_url(ref, "notifiable_all.csv"),
+        args.notifiable_csv, args.from_github)
     backfill_rows, backfill_src = local_or_github(
-        "backfill/notifiable-flu-dengue.csv", BACKFILL_URL,
+        "backfill/notifiable-flu-dengue.csv",
+        cncdc_data_url(ref, "backfill/notifiable-flu-dengue.csv"),
         args.backfill_csv, args.from_github)
 
     covid_series = build_weekly_series(
@@ -733,6 +747,12 @@ def main() -> int:
         "--from-github",
         action="store_true",
         help="Force fetch from GitHub raw instead of local CSVs",
+    )
+    parser.add_argument(
+        "--cncdc-ref",
+        default="main",
+        help="cn_cdc_dashboard git ref to read with --from-github "
+             "(commit SHA or branch). A SHA avoids a stale raw CDN copy of main.",
     )
     args = parser.parse_args()
 
