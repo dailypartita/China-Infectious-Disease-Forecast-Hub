@@ -136,18 +136,27 @@ jobs:
                 f"tasks.json valid against hubverse v6 schema")
           EOF
 
+      # Commit the three generated files together. A multiline pathspec
+      # passed to git commit recorded only time-series.csv and left the new
+      # oracle rows uncommitted.
       - name: Commit if changed
         id: commit
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "chore(target-data): sync from cn_cdc_dashboard"
-          commit_user_name: github-actions[bot]
-          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
-          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          file_pattern: |
-            target-data/time-series.csv
-            target-data/oracle-output.csv
+        run: |
+          set -euo pipefail
+          git add -- \
+            target-data/time-series.csv \
+            target-data/oracle-output.csv \
             hub-config/tasks.json
+          if git diff --cached --quiet; then
+            echo "changes_detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(target-data): sync from cn_cdc_dashboard"
+          git push origin HEAD:main
+          echo "changes_detected=true" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Dashboard does not watch this repository. A deploy-key push of
       # .github/rebuild-data-request starts Rebuild Data, which reads the
