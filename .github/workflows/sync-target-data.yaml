@@ -1,12 +1,23 @@
 name: Sync target data from cn_cdc_dashboard
 
 on:
+  # cn_cdc_dashboard writes this file with a deploy key as soon as its data
+  # commit lands. The file contains the upstream commit SHA. The Friday and
+  # Sunday crons are only a backup for a missed request.
+  push:
+    branches: [main]
+    paths:
+      - .github/cncdc-sync-request
   schedule:
-    # Friday 08:00 UTC ≈ Friday 16:00 Asia/Shanghai — after cn_cdc_dashboard sync (Fri 06:00 UTC)
     - cron: "0 8 * * 5"
-    # Sunday backup after delayed upstream sync
     - cron: "0 8 * * 0"
   workflow_dispatch:
+    inputs:
+      cncdc_ref:
+        description: "cn_cdc_dashboard git ref to read (commit SHA or main)"
+        required: false
+        default: main
+        type: string
 
 permissions:
   contents: write
@@ -26,8 +37,40 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Resolve cn_cdc_dashboard ref
+        id: cncdc
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: "${{ github.event.inputs.cncdc_ref }}"
+        run: |
+          set -euo pipefail
+          ref="main"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_REF" ]]; then
+            ref="$INPUT_REF"
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            ref="$(tr -d '[:space:]' < .github/cncdc-sync-request)"
+          fi
+          if [[ ! "$ref" =~ ^[A-Za-z0-9._/-]{1,80}$ || "$ref" == *..* ]]; then
+            echo "invalid cn_cdc_dashboard ref" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Using cn_cdc_dashboard ref $ref"
+
       - name: Update target data from cn_cdc_dashboard
-        run: python3 target-data/update_from_cncdc.py --from-github
+        env:
+          CNCDC_REF: "${{ steps.cncdc.outputs.ref }}"
+        run: |
+          set -euo pipefail
+          # The upstream commit can take a few seconds to show up on raw.githubusercontent.com.
+          for attempt in 1 2 3 4 5; do
+            if python3 target-data/update_from_cncdc.py --from-github --cncdc-ref "$CNCDC_REF"; then
+              exit 0
+            fi
+            echo "upstream fetch failed (attempt ${attempt}); retrying"
+            sleep 15
+          done
+          exit 1
 
       # Structural gate before committing straight to main: this push bypasses
       # the PR-based validate-target-data workflow, so refuse to commit files
@@ -93,11 +136,37 @@ jobs:
                 f"tasks.json valid against hubverse v6 schema")
           EOF
 
+      # Commit the three generated files together. A multiline pathspec
+      # passed to git commit recorded only time-series.csv and left the new
+      # oracle rows uncommitted.
       - name: Commit if changed
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "chore(target-data): sync from cn_cdc_dashboard"
-          file_pattern: |
-            target-data/time-series.csv
-            target-data/oracle-output.csv
+        id: commit
+        run: |
+          set -euo pipefail
+          git add -- \
+            target-data/time-series.csv \
+            target-data/oracle-output.csv \
             hub-config/tasks.json
+          if git diff --cached --quiet; then
+            echo "changes_detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(target-data): sync from cn_cdc_dashboard"
+          git push origin HEAD:main
+          echo "changes_detected=true" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Dashboard does not watch this repository. A deploy-key push of
+      # .github/rebuild-data-request starts Rebuild Data, which reads the
+      # target-data commit just pushed above.
+      - name: Ask the dashboard to rebuild forecast data
+        if: steps.commit.outputs.changes_detected == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.DASHBOARD_DEPLOY_KEY }}
+          TARGET_REPO: dailypartita/China-Infectious-Disease-Forecast-Dashboard
+          TARGET_FILE: .github/rebuild-data-request
+          REF: "${{ steps.commit.outputs.commit_hash }}"
+          COMMIT_MESSAGE: "ci: rebuild forecast data from hub target-data"
+        run: bash .github/scripts/request-downstream.sh
